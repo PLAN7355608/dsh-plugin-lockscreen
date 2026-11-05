@@ -209,3 +209,13 @@ localStorage.removeItem('lockscreen.cred'); localStorage.removeItem('lockscreen.
 - 真正的"加载进度条"（要改 `dsh.profile.bundles`，用户已否决；现在只有"演"的进度条）
 
 详细设计和进度见同目录 `PLAN.md`、`WORKLOG.md`。
+
+---
+
+## 许可证
+
+本项目以 **GNU Affero 通用公共许可证第 3 版（AGPL-3.0）** 发布，许可证全文见 [LICENSE](LICENSE)。
+
+简单说：你可以自由使用、修改、分发，包括商业用途；但只要把修改后的版本提供给他人使用（包括通过网络提供服务），就必须以同一许可证公开完整源代码。
+
+> 本项目代码完全由人工智能生成，作者不提供任何形式的担保，详见上文的警告。
