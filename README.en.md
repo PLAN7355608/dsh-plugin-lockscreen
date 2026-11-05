@@ -1,4 +1,4 @@
-# dsh-plugin-lockscreen
+# Lock Screen Plugin (dsh-plugin-lockscreen)
 
 > **WARNING / 警告**
 >
@@ -6,12 +6,206 @@
 >
 > 警告：该项目代码完全由人工智能生成，本人无任何代码能力；若因使用这些代码产生任何人员伤亡和财产损失，本人概不负责。
 
-A lock screen plugin for DeepSeek Harness: lock the DSH window on demand and unlock it with a 4-digit PIN or a custom passphrase. The interface is TUI-style — pure characters, no images.
+A lock screen plugin for DeepSeek Harness: manually lock the DSH window and unlock it with a 4-digit PIN or a custom text passphrase.
+The visuals are TUI-style (a pure character interface, no images).
 
-- Lock on demand, or automatically after a set idle time; optional "lock on launch".
-- Boot animation on first frame (injected by the host side, not the front-end bundle).
-- Adjustable wrong-attempt limit and cooldown, marquee message, optional mouse lock while locked.
-- Settings live in DSH Settings → Lock screen (锁屏).
-- Current version: 0.1.4.
+> Current version: **0.1.4 (new: adjustable wrong-attempt limit / cooldown length, end-credits error page, scrolling message ticker + per-character color shifting + font size)**
+> All 7 tier-A items of 0.1.0 are done and the whole-machine acceptance passed, archived in `versions/v0.1.0/`; 0.1.1 added "lock on app launch" and the 5-second "startup self-check" before locking, archived in `versions/v0.1.1/`; **0.1.2 is packaged and archived in `versions/v0.1.2/`** (redesigned boot animation + redesigned lock screen + only one clock kept); **0.1.3 is packaged and archived in `versions/v0.1.3/`** (auto-lock + small lock icon in the settings page); **0.1.4 is packaged and archived in `versions/v0.1.4/`** (adjustable wrong attempts / cooldown + end-credits error page + scrolling message + invisible preview button), plus release packages `dist/dsh-plugin-lockscreen-0.1.4.tgz` and `-linux.zip` (with `INSTALL-LINUX.md`, `SHA256SUMS.txt`; the hashes of the 6 files in the package match the snapshot).
+> The "startup self-check" is a **real boot animation**: the first frame is injected into the home page HTML by the backend half (`tapIndex` in `index.js`), without waiting for the frontend plugin to finish loading; since 0.1.2 it is injected before `</body>` (last in the DOM), so it covers even DSH's own circular loading card.
+> The boot animation was revised per the annotations: **all English**, five items flipping `OFFLINE → READY` in step with the progress bar, `modules loaded N/89`, progress bar and status column right-aligned, **no skip provided** (neither keyboard nor mouse responds), **plays only once per session** (F5 does not replay it).
+> **Lock screen redesign (also in 0.1.2)**: the status line at the top right, the version line at the bottom, and the two lines of text in the unlock area were removed; everything except the clock was enlarged (13px → `clamp(15px, 1.75vh, 30px)`, which is 20.2px on your 2560×1440@125%); **only one clock is left** (the polarizer digital display); the nixie tube and the oversized typeface were cut at the user's request. The originally planned 0.1.3 number is void; both batches count as 0.1.2.
+> This version **is a real lock screen now**: once locked, the interface is fully opaque, Esc won't close it, the input area becomes "enter passphrase", and it opens only with the right passphrase.
+> The settings panel (change passphrase / unlock and errors / change message / locked duration / disable mouse while locked / lock on app launch / auto-lock) is in **DSH settings page → Lock Screen**.
 
-The full documentation, including the design notes and changelog, is written in Chinese: see [README.md](README.md).
+---
+
+## 1. How to use
+
+| Action | Effect |
+| --- | --- |
+| Open / refresh DSH | **Goes straight to the lock screen by default** ("lock on app launch" is on by default; it does not lock while no passphrase has been set yet); the 5-second "startup self-check" plays first (all English, keyboard and mouse unresponsive, cannot be skipped), **only once per session**, so F5 afterwards does not replay it |
+| `Ctrl+Shift+L` | **Lock the screen** (pressing it again while locked does not unlock it; you must enter the passphrase) |
+| `Enter` after typing the passphrase | Unlock and return to the previous interface (no refresh, nothing lost) |
+| **`F`** | Enter / leave "real fullscreen" (covers the taskbar too); the result is shown in a small line at the bottom of the screen |
+| Mouse | **Fully disabled by default** while locked: the pointer is invisible, clicks / right-clicks / wheel / drag do nothing, keyboard only. To restore it, turn off "disable mouse while locked" in the settings page |
+
+### First lock: set a passphrase first
+
+The first time you press `Ctrl+Shift+L`, the unlock area shows the **settings panel**:
+
+- `Numeric PIN`: exactly 4 digits (e.g. `0823`)
+- `Text passphrase`: **at least 6** and at most 64 characters, Chinese is fine too
+
+Either one works; set one of them. After setting it **you are still locked** — you have to type the passphrase you just set to unlock (on purpose, which also verifies on the spot that you didn't mistype it).
+
+### What if I enter it wrong repeatedly
+
+5 wrong attempts → **30-second cooldown**; the panel shows "N s left", it recovers automatically at 0, and the input box is disabled during that time.
+
+### How the passphrase is stored
+
+- Only the digest computed from **PBKDF2-SHA256 (210,000 rounds) + a 16-byte random salt** is stored, **never the plaintext**;
+- It lives in DSH's local storage (`lockscreen.cred`), alongside `lockscreen.fails` (wrong-attempt count) and `lockscreen.cooldownUntil` (when the cooldown ends);
+- Because no plaintext is stored, **there is no such thing as "recovering the passphrase"**; if you forget it, the only way is to reset it as described in the next section.
+
+### Forgot the passphrase — how to reset
+
+Three steps (no coding knowledge needed, just click along):
+
+1. Press `F12` to open the developer tools (with `「打开应用就锁屏」` on, pressing F5 locks again, so this version is "open the console" rather than "refresh to bypass");
+2. Switch to the `Console` panel;
+3. Paste this line and press Enter:
+
+```js
+localStorage.removeItem('lockscreen.cred'); localStorage.removeItem('lockscreen.fails'); localStorage.removeItem('lockscreen.cooldownUntil')
+```
+
+4. Press `F5` to refresh — since there is no passphrase any more, it **will not lock** this time; go in and set a new one.
+
+(If some day F12 won't open either, the fallback is: turn off "lock on app launch" in the settings page — but that requires unlocking first, so the real last resort is clearing `lockscreen.cred`, as above.)
+
+---
+
+## 2. Where the settings panel is
+
+**DSH settings page → find "Lock Screen" on the left** (a section the plugin adds to the settings page itself). The panel lets you change eight things; changes take effect immediately, no refresh needed:
+
+| Area | What it does |
+| --- | --- |
+| **Passphrase** | Shows whether it is "not set / 4-digit numeric PIN / text passphrase" and the date it was set; **change passphrase** (must enter the current one first), **clear passphrase** (must confirm once more) |
+| **Unlock and errors** (0.1.4) | How many wrong attempts before locking (3 / 5 / 7, default 5), how long to lock (30 / 45 / 60 seconds, default 30). See "2.2" below |
+| **Message** | The text shown on the "message" line of the lock screen, one line; you can also "restore default". Since 0.1.4 you can also turn on the **scrolling ticker** (slow / medium / fast), pick the **font size** (small / medium / large), and enable **per-character color shifting** (off by default) |
+| **Locked duration** | Toggle. When on, an extra line `已锁定 03:12` appears under the date on the lock screen; **off by default** |
+| **Disable mouse while locked** | Toggle. When on, the pointer is hidden while locked and clicks / right-clicks / wheel / drag all do nothing; **on by default** |
+| **Lock on app launch** | Toggle. When on, every DSH start / refresh goes straight to the lock screen; **on by default** |
+| **Auto-lock** | See "2.1" below: how long idle before locking, whether switching away locks, whether to count down before locking; **off by default** |
+
+Why not put the settings on the lock screen itself: one more button on the lock screen would give anyone passing by a chance to change the passphrase. The settings page only opens when you are "already unlocked and inside DSH".
+
+**That row on the left is a small lock icon now** (since 0.1.3): DSH's `settings.section` slot has no `icon` field, so third-party sections all get a gear by default; following what `dshmarket` / `dsh-better-sidebar` do, the plugin waits for the settings page to mount, finds the row whose "text is 「锁屏」", and swaps the gear for a small lock with a CSS mask (the color follows the nav text and changes automatically on hover / selection). If the `icon` field is added some day, this block can be deleted.
+
+### 2.2 Unlock and errors / message display (new in 0.1.4)
+
+**Handling wrong attempts** (the biggest change in 0.1.4):
+
+| Setting | Default | Options |
+| --- | --- | --- |
+| Lock after N wrong attempts | 5 | 3 / 5 / 7 |
+| Lock duration | 30 s | 30 / 45 / 60 s |
+
+Once you hit the limit, the lock screen **no longer stays on the input box** but switches to a separate error page — styled like a movie's **end credits**: the subtitles scroll from the bottom of the screen all the way up.
+
+- The subtitles come as seven language blocks (Chinese → English (US) → English (UK) → Français → Русский → Español → العربية), each block being "a yellow warning triangle + white-on-red WARNING + a warning sentence with **concrete legal provisions and penalties**" (China's Cybersecurity Law Art. 27 + Criminal Law 285②/286①, US 18 U.S.C. §1030(a)(2), UK CMA 1990 s.1, France 323-1/323-2, Russia ст.272, Spain 197 bis, Saudi Anti-Cyber Crime Law Arts. 3/5);
+- The body text is **justified**, with the last line flush to the starting edge (Arabic is automatically flush right); the gaps between blocks are widened so it doesn't blur into one mass while scrolling;
+- The bottom three lines (`RESUME IN NN s` countdown / ASCII progress bar / back button) **stay fixed**; only the subtitles in the middle scroll;
+- When the cooldown reaches **3/4** (second 22.5 out of 30), `[ 返回再试 ]` appears at the bottom; press Enter or click it to go back to the input page;
+- At that instant **the wrong-attempt count is cleared**, but the cooldown still runs for the remaining short stretch — during it the input box stays disabled and shows "cooling down, N s left";
+- **It does not jump back automatically when the cooldown ends**: the subtitles keep looping (use it as a screensaver), and only the bottom countdown changes to 「冷却已结束 · 按 Enter 返回」; when to go back is your call.
+- The loop is **seamless** (fixed in 0.1.4): there are two identical copies of the subtitles and the scroll distance is exactly one copy's height, so the frame at the bottom is pixel-identical to the start of the second copy — the seam is invisible and it does not "jump back to the beginning".
+
+**Invisible button** (new in 0.1.4, purely for keyboard / debugging):
+
+On the lock screen press `Tab` (the cursor is already in the passphrase box) and an **inverse-highlighted** bar lights up under the passphrase box: `> 预览出错页  [Enter]`.
+
+- Press `Enter` to go straight to the end-credits error page described above — the on-screen text, countdown, and progress bar are **exactly the same as a real error**, for styling work or demos;
+- `Esc` (or Enter / Space) returns to the input page at any time, with the cursor back in the passphrase box;
+- It **does not touch the real wrong-attempt counter or write a cooldown**, and is completely invisible normally (`opacity: 0`); it only lights up when focused with Tab.
+
+**Message display**:
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Scrolling ticker | Off | When on, a message longer than one line scrolls right to left; short messages stay put |
+| Scroll speed | Medium | Slow / medium / fast = 6 / 10 / 16 characters per second |
+| Message font size | Medium | Small / medium / large = 0.9 / 1.0 / 1.35× |
+| Per-character color shifting | Off | Each character a different color, slowly shifting hue (that rainbow marquee feel). Off by default because it doesn't quite fit the terminal style |
+
+### 2.1 Auto-lock (new in 0.1.3, off by default)
+
+It only works when you are **already unlocked and have set a passphrase** (auto-locking with no passphrase = locking yourself out for good, so it doesn't do that).
+
+| Toggle | Default | Description |
+| --- | --- | --- |
+| **Auto-lock** | Off | Master switch. When on, "no keyboard / mouse / wheel activity inside DSH for this long" locks the screen |
+| Idle time before it should lock | 5 min | Options 1 / 3 / 5 / 10 / 15 / 30 / 60 minutes |
+| Lock when switching to other software | Off | Also locks when the DSH window loses focus (you switch to the browser, WeChat…) |
+| Lock delay after switching away | 30 s | Options immediately / 30 / 60 / 120 s |
+| Countdown before locking | On | In the last few seconds the bottom of the screen shows `AUTO-LOCK 05s · 动一下键鼠就取消`; any keyboard/mouse action restarts the timer |
+
+Two key points:
+- **It only sees activity inside the DSH window**. Typing in other software is invisible to the plugin — so "idle" means "nothing happening in the DSH window", not "nothing happening on the whole computer".
+- Locking on switch-away is off by default because it gets annoying when you switch windows often; when it is on, returning to the DSH window (regaining focus) immediately cancels that timer.
+
+---
+
+## 3. Clock (only one: polarizer digital display)
+
+On 2026-10-24 the user decided: **keep only the polarizer one**; the nixie tube and oversized typeface versions are not being made (their code has been deleted too).
+
+Like the seven-segment strokes of a digital watch / calculator: mint-colored digits (ink black in the light theme) float directly on the lock screen background, **no panel, no frame, and unlit segments aren't drawn either** — only the "shown digits" are left on screen. The three horizontal strokes leave a little margin on each side (the "fill the whole cell" version was tried and the user chose this one), the four vertical strokes sit between the horizontal strokes, with slanted cuts at both ends.
+
+> Every time the minute ticks over, the clock area is swept from top to bottom by a bright line (like an old CRT lighting up again); nothing moves while the minute stays the same.
+>
+> The digit `1` is **two sections, top and bottom** (broken in the middle like the vertical strokes of other digits), not one stroke drawn all the way through; its cell is also a bit narrower — on a digital clock `1` is naturally narrower than other digits, and narrowing it makes the spacing of the whole row even.
+
+### Screen layout
+
+"Top to bottom" style: a status bar along the top edge (showing only `[ LOCKSCREEN ]`), `+` markers in the four corners, clock and content in the middle — filling the whole DSH window, not a small window in the center. The background is fully opaque (anti-peeking).
+The left end of the top bar deliberately leaves 150px empty: DSH's own menu (Application/Edit) is drawn by the browser shell and the plugin cannot cover it, so it just keeps out of the way.
+
+Since 0.1.2 the screen has been simplified: the top-right "press Ctrl+1/2/3 to switch clock style · version number", the bottom "version number · clock name", and the two lines of explanation "press Enter after typing to unlock / unlock methods…" are **all removed**, and everything except the clock is uniformly enlarged to `clamp(15px, 1.75vh, 30px)`.
+
+---
+
+## 4. Known limitations (important, don't treat them as bugs)
+
+1. **This is a "soft lock", not a system login lock**: it guards against "a colleague passing by taking a look at the screen", not against a determined person. Killing DSH from Task Manager or switching away with `Alt+Tab` gets around it.
+2. **`F5` refresh locks again** ("lock on app launch" is on by default). In 0.1.0 it was "refresh = unlock"; since 0.1.1 it is "refresh also locks" — because that 0.1.0 hole meant anyone could press F5 to bypass the lock screen. To restore the old behavior: settings page → turn off "lock on app launch". For the real last resort when you forget the passphrase, see "Forgot the passphrase — how to reset" above.
+3. **The "Application / Edit" menu at the top left cannot be covered**: that is Electron's native menu bar, drawn by the browser shell, and no z-index in the web layer can get above it; the same goes for the little whale-girl widget at the bottom right (DSH's own top-level container). Both confirmed — just so you know.
+4. **It only covers the DSH window**: other program windows and other monitors are unaffected; "disable mouse while locked" also only works inside this window — **the system-level mouse (desktop, other software) is beyond the plugin** (that would need OS/driver-level privileges).
+5. **Passphrase verification requires a "secure context"**: the DSH interface is `127.0.0.1` (a secure context) so it is fine; if some day you open it through a plain `http://` LAN address, the browser won't allow the crypto API and the panel will say "the current interface is not a secure context… cannot encrypt the passphrase".
+6. **The startup self-check's "progress bar" is acted, not real download progress**: the module total (89) is real and `modules loaded N/89` advances with time; the 5 "check items" aren't really checked either, they just light up one after another with the bar. Reason in PLAN 6.13: a plugin necessarily runs in the last bundle, so by the time it can run everyone else has loaded long ago; drawing a real progress bar would require changing `dsh.profile.bundles` (the user has explicitly declined). Since 0.1.1 **the first frame is injected into the home page by the backend half**, so "a picture right at boot" is real now, and DSH's loading card no longer shows its face.
+7. **The first-frame colors are guessed from `prefers-color-scheme`** (at that moment DSH's own theme isn't applied yet): if your system is light and DSH uses dark (or the other way round), the colors in the first few frames won't match the rest, and the frontend corrects it as soon as it takes over. Not a bug.
+8. **The self-check animation cannot be skipped** (by design): keyboard and mouse don't respond for those 5 seconds, and Esc doesn't get you into the lock screen either. Also it **plays only once per DSH session**; F5 afterwards doesn't replay it (recorded in `sessionStorage`; it plays again only after closing and reopening DSH).
+9. **Auto-lock only counts "activity" inside the DSH window**: typing in other software (browser, WeChat, IDE…) is invisible to the plugin, so typing away there still counts as "idle in DSH". To lock when "the whole computer is idle", you need the OS's own lock screen; the plugin can't do that. Also **auto-lock does not take effect when no passphrase has been set** (to avoid locking passphrase-less users out for good).
+
+---
+
+## 5. In case the screen won't close
+
+- While really locked, `Esc` is **deliberately ineffective** (if Esc could close it, it wouldn't be a lock); the way out is to enter the passphrase, or press F12 to clear local storage and refresh (see "Forgot the passphrase — how to reset").
+- If you pressed `F` to enter real fullscreen, the browser's fixed behavior is that **the first `Esc` exits fullscreen first**; in preview mode the second `Esc` closes the screen.
+
+## 6. How to install / uninstall
+
+Install: DSH → Plugins page → Add plugin → enter the local path `E:\bigbluefishWorkbench\lockscreen-plugin` → Install.
+This project is installed through a **directory link (Junction)**, so after changing files:
+- Changing `client.js` (screen + lock screen logic) → takes effect on `F5` refresh;
+- Changing `index.js` (backend) → requires **restarting DSH**.
+
+Uninstall: just uninstall it from the plugins page; nothing is left in the system (the three `lockscreen.*` entries in local storage can be cleared with the command above).
+
+## 7. Temporary files from development (not plugin features)
+
+- `_lab/` — the development workbench, **not part of the plugin**, can be deleted once finalized. A round of cleanup was already done on 2026-10-24 at the user's request (31 document drafts, 14 one-off patch scripts, 18 regenerable HTML previews, 2 probe JSON files, and the `asar-out/` directory deleted); only "tools still in use + screenshots" remain:
+  - `harness.html`: runs the lock screen in a normal browser with the real `client.js` (fake DSH background + real passphrase flow + a "fake settings page" block on the right for the settings panel), `?theme=dark|light` simulates the theme, `?pane=0` turns off the settings page leaving only the lock screen, `?bootms=6000` slows down the boot animation, `?boot=0` doesn't fake the boot image; auto-lock-specific parameters: `?autolock=1|0`, `?idlems=milliseconds`, `?idlemin=minutes`, `?blur=1|0`, `?blursec=seconds`, `?warn=0|1` (all written into `localStorage` before the plugin loads, because the plugin reads them at startup);
+  - `gen-glyph-test.cjs`: pulls the small lock SVG for the settings page out of `client.js` and generates comparison pages at different sizes (16/20/24/32/48px);
+  - `gen-lock-concept.mjs`: generates the "concept art" for the lock screen redesign (drawn at 2048×1152 real pixels then scaled down proportionally, with numbered annotations; produces html, delete after viewing);
+  - `gen-size-concept.mjs`: generates a comparison of the self-check screen ratio on five kinds of screens (verifying `clamp(14px,2.6vh,52px)` + `min(64ch,88vw)`);
+  - `gen-boot-concept.mjs`: generates three concept frames for the boot animation redesign;
+  - `gen-splash-preview.mjs`: generates the first-frame preview page (light + dark versions; the dark version is simulated by deleting the `@media` block);
+  - `test-credential.cjs`: extracts the passphrase-related functions and runs assertions in Node (wrong-attempt cooldown, no plaintext stored, Chinese passphrase, etc.);
+  - `test-index-splash.mjs`: 25 assertions on the first-frame injection (injected before `</body>`, script compiles, all English, no skip listener, etc.);
+  - `snapshot.cjs`: version archiving (plan A folder snapshot, copy only, never delete, generates `VERSION.md` automatically);
+  - `check-snapshot.mjs`: verifies "snapshot = workspace = VERSION.md manifest"; `sync-snapshot-worklog.mjs` syncs WORKLOG entries added later into the snapshot;
+  - `append.cjs`: a small tool for appending Chinese fragments into documents (write the fragment file first, then `node _lab/append.cjs target fragment`, and it checks for mojibake/BOM along the way);
+  - `measure_*.py`: scripts for measuring stroke positions on screen;
+  - `asar-get.cjs` / `asar-grep.cjs`: small tools for extracting files from `app.asar` and grepping for keywords (used when investigating the boot image and the first-frame injection mechanism; conclusions written in PLAN 6.13);
+  - `*.png`: comparison screenshots from development (the user asked to keep them; delete when told).
+
+## 8. Not done yet
+
+- Typewriter character-by-character reveal effect (as a toggle)
+- A real "loading progress bar" (would require changing `dsh.profile.bundles`, the user has declined; only the "acted" progress bar exists now)
+
+Detailed design and progress are in `PLAN.md` and `WORKLOG.md` in the same directory.
