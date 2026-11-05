@@ -1,0 +1,6 @@
+_lab/
+versions/
+dist/
+desktop.ini
+*.png
+.npmignore
